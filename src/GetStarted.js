@@ -338,6 +338,7 @@ export default function GetStarted() {
           }}
           onHoverStart={() => setHoveredButton('primary')}
           onHoverEnd={() => setHoveredButton(null)}
+          onClick={() => navigate('/investment')}
           whileHover={{ 
             scale: 1.02,
             boxShadow: '0 12px 35px rgba(132, 204, 22, 0.4)'

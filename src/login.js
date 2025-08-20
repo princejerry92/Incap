@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+
 
 const Login = () => {
   const [form, setForm] = useState({ email: '', password: '' });
   const [focusedField, setFocusedField] = useState(null);
   const [hoveredButton, setHoveredButton] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  const navigate = useNavigate();
+  
+    const handleSignup = () => {
+      navigate('/signup');
+    };
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -390,15 +398,25 @@ const Login = () => {
           <motion.span
             style={{
               fontSize: '14px',
-              color: '#2563eb',
-              cursor: 'pointer',
-              fontWeight: '500',
-              textDecoration: 'underline'
+              color: '#374151',
+              fontWeight: '500'
             }}
-            whileHover={{ color: '#1d4ed8' }}
-            whileTap={{ scale: 0.98 }}
           >
-            Don't have an account?
+            Don't have an account? 
+            <motion.span
+              style={{
+                color: '#2563eb',
+                cursor: 'pointer',
+                fontWeight: '500',
+                textDecoration: 'underline',
+                marginLeft: '4px'
+              }}
+              whileHover={{ color: '#1d4ed8' }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleSignup}
+            >
+              Sign up
+            </motion.span>
           </motion.span>
           
           <motion.span
