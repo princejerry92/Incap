@@ -1,0 +1,427 @@
+"""
+API routes for admin operations.
+"""
+
+from fastapi import APIRouter, HTTPException, Header
+from typing import Optional, Dict, Any, List
+from ..services.transaction_service import TransactionService
+from ..services.interest_calculation_service import InterestCalculationService
+from ..core.security import verify_access_token
+
+router = APIRouter(prefix="/admin", tags=["Admin"])
+
+@router.get("/pending-withdrawals")
+async def get_pending_withdrawals(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get all pending withdrawal requests for admin approval.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    # Extract token from "Bearer <token>" format
+    session_token = authorization
+    if authorization and authorization.startswith("Bearer "):
+        session_token = authorization.replace("Bearer ", "")
+
+    try:
+        # Get user from session or verify admin JWT
+        from ..services.dashboard import DashboardService
+        dashboard_service = DashboardService()
+        user = dashboard_service.get_user_by_session(session_token)
+
+        if not user:
+            # If not a regular session, try to validate as admin JWT
+            try:
+                payload = verify_access_token(session_token)
+                if payload.get('role') != 'admin':
+                    raise HTTPException(status_code=401, detail="Invalid or expired session")
+                user = {'is_admin': True, 'username': payload.get('sub')}
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+        # TODO: Add admin role check here
+        # For now, assume any authenticated user can access admin functions
+
+        # Get all pending withdrawals
+        from ..core.config import settings
+        import supabase
+        supabase_client = supabase.create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+
+        response = supabase_client.table('transactions')\
+            .select('*')\
+            .eq('withdraw_status', 'pending')\
+            .eq('transaction_type', 'withdrawal')\
+            .order('created_at', desc=True)\
+            .execute()
+
+        transactions = getattr(response, 'data', [])
+
+        # Get investor details for each withdrawal
+        pending_withdrawals = []
+        for transaction in transactions:
+            investor_id = transaction.get('investor_id')
+            if investor_id:
+                investor_response = supabase_client.table('investors')\
+                    .select('first_name, surname, email, account_number, bank_name, bank_account_name, bank_account_number')\
+                    .eq('id', investor_id)\
+                    .execute()
+
+                investor_data = getattr(investor_response, 'data', [])
+                if investor_data:
+                    investor = investor_data[0]
+                    withdrawal_info = {
+                        'transaction_id': transaction.get('transaction_id'),
+                        'investor_id': investor_id,
+                        'investor_name': f"{investor.get('first_name', '')} {investor.get('surname', '')}",
+                        'investor_email': investor.get('email'),
+                        'account_number': investor.get('account_number'),
+                        'bank_name': investor.get('bank_name'),
+                        'bank_account_name': investor.get('bank_account_name'),
+                        'bank_account_number': investor.get('bank_account_number'),
+                        'amount': float(transaction.get('amount', 0)),
+                        'created_at': transaction.get('created_at'),
+                        'description': transaction.get('description', '')
+                    }
+                    pending_withdrawals.append(withdrawal_info)
+
+        return {
+            'success': True,
+            'pending_withdrawals': pending_withdrawals,
+            'total_count': len(pending_withdrawals)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching pending withdrawals: {str(e)}")
+
+@router.post("/approve-withdrawal/{transaction_id}")
+async def approve_withdrawal(
+    transaction_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Approve a pending withdrawal request.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    # Extract token from "Bearer <token>" format
+    session_token = authorization
+    if authorization and authorization.startswith("Bearer "):
+        session_token = authorization.replace("Bearer ", "")
+
+    try:
+        # Get user from session or verify admin JWT
+        from ..services.dashboard import DashboardService
+        dashboard_service = DashboardService()
+        user = dashboard_service.get_user_by_session(session_token)
+
+        if not user:
+            # If not a regular session, try to validate as admin JWT
+            try:
+                payload = verify_access_token(session_token)
+                if payload.get('role') != 'admin':
+                    raise HTTPException(status_code=401, detail="Invalid or expired session")
+                user = {'is_admin': True, 'username': payload.get('sub')}
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+        # TODO: Add admin role check here
+
+        # Approve the withdrawal
+        transaction_service = TransactionService()
+        result = transaction_service.update_withdrawal_status(transaction_id, 'sent')
+
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['error'])
+
+        return {
+            'success': True,
+            'message': f'Withdrawal {transaction_id} has been approved and processed',
+            'transaction_id': transaction_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error approving withdrawal: {str(e)}")
+
+@router.post("/reject-withdrawal/{transaction_id}")
+async def reject_withdrawal(
+    transaction_id: str,
+    rejection_reason: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Reject a pending withdrawal request.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    # Extract token from "Bearer <token>" format
+    session_token = authorization
+    if authorization and authorization.startswith("Bearer "):
+        session_token = authorization.replace("Bearer ", "")
+
+    try:
+        # Get user from session or verify admin JWT
+        from ..services.dashboard import DashboardService
+        dashboard_service = DashboardService()
+        user = dashboard_service.get_user_by_session(session_token)
+
+        if not user:
+            # If not a regular session, try to validate as admin JWT
+            try:
+                payload = verify_access_token(session_token)
+                if payload.get('role') != 'admin':
+                    raise HTTPException(status_code=401, detail="Invalid or expired session")
+                user = {'is_admin': True, 'username': payload.get('sub')}
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+        # TODO: Add admin role check here
+
+        # Reject the withdrawal
+        transaction_service = TransactionService()
+        result = transaction_service.update_withdrawal_status(
+            transaction_id,
+            'failed',
+            rejection_reason or 'Rejected by admin'
+        )
+
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['error'])
+
+        return {
+            'success': True,
+            'message': f'Withdrawal {transaction_id} has been rejected',
+            'transaction_id': transaction_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error rejecting withdrawal: {str(e)}")
+
+@router.post("/process-due-dates")
+async def admin_process_due_dates(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Manually trigger due date processing for admin.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    # Extract token from "Bearer <token>" format
+    session_token = authorization
+    if authorization and authorization.startswith("Bearer "):
+        session_token = authorization.replace("Bearer ", "")
+
+    try:
+        # Get user from session or verify admin JWT
+        from ..services.dashboard import DashboardService
+        dashboard_service = DashboardService()
+        user = dashboard_service.get_user_by_session(session_token)
+
+        if not user:
+            # If not a regular session, try to validate as admin JWT
+            try:
+                payload = verify_access_token(session_token)
+                if payload.get('role') != 'admin':
+                    raise HTTPException(status_code=401, detail="Invalid or expired session")
+                user = {'is_admin': True, 'username': payload.get('sub')}
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+        # TODO: Add admin role check here
+
+        # Process due dates
+        interest_service = InterestCalculationService()
+        result = interest_service.check_and_process_due_dates()
+
+        return {
+            'success': result['success'],
+            'processed_count': result.get('processed_count', 0),
+            'errors': result.get('errors', [])
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing due dates: {str(e)}")
+
+# --- New Admin Endpoints ---
+
+@router.get("/investors")
+async def get_all_investors(
+    search: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get all investors with due dates.
+    """
+    # TODO: Refactor auth check into a dependency
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    
+    try:
+        from ..services.admin_service import AdminService
+        admin_service = AdminService()
+        result = admin_service.get_all_investors(search_query=search)
+        
+        if not result['success']:
+            raise HTTPException(status_code=500, detail=result['error'])
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/payments")
+async def get_payments_summary(
+    search: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get payments summary.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+        
+    try:
+        from ..services.admin_service import AdminService
+        admin_service = AdminService()
+        result = admin_service.get_payments_summary(search_query=search)
+        
+        if not result['success']:
+            raise HTTPException(status_code=500, detail=result['error'])
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/portfolio")
+async def get_portfolio_details(
+    search: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get portfolio details.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+        
+    try:
+        from ..services.admin_service import AdminService
+        admin_service = AdminService()
+        result = admin_service.get_portfolio_details(search_query=search)
+        
+        if not result['success']:
+            raise HTTPException(status_code=500, detail=result['error'])
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/portfolio/{investor_id}")
+async def update_investor_portfolio(
+    investor_id: str,
+    update_data: Dict[str, Any],
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Update investor portfolio.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+        
+    try:
+        from ..services.admin_service import AdminService
+        admin_service = AdminService()
+        result = admin_service.update_investor_portfolio(investor_id, update_data)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['error'])
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/customer-care")
+async def get_customer_care_queries(
+    search: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get customer care queries.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+        
+    try:
+        from ..services.admin_service import AdminService
+        admin_service = AdminService()
+        result = admin_service.get_customer_care_queries(search_query=search)
+        
+        if not result['success']:
+            raise HTTPException(status_code=500, detail=result['error'])
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/customer-care/{query_id}")
+async def update_customer_care_query(
+    query_id: str,
+    status: str,
+    admin_response: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Update customer care query status.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+        
+    try:
+        from ..services.admin_service import AdminService
+        admin_service = AdminService()
+        result = admin_service.update_customer_care_query(query_id, status, admin_response)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['error'])
+            
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/config")
+async def get_admin_config(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get public config for admin frontend (Supabase URL/Key).
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+        
+    try:
+        from ..core.config import settings
+        return {
+            'success': True,
+            'supabase_url': settings.SUPABASE_URL,
+            'supabase_key': settings.SUPABASE_KEY
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
