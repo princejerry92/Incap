@@ -99,7 +99,8 @@ class InterestCalculationService:
             investor = investor_data[0]
             portfolio_type = investor.get('portfolio_type')
             investment_type = investor.get('investment_type')
-            total_investment = float(investor.get('total_investment', 0) or 0)
+            # Fallback to initial_investment if total_investment is 0 or missing (Fix for legacy data)
+            total_investment = float(investor.get('total_investment', 0) or investor.get('initial_investment', 0) or 0)
             investment_start_date = investor.get('investment_start_date')
 
             # If no investment type or start date or zero total investment, no interest

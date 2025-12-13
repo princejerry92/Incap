@@ -189,6 +189,7 @@ async def payment_callback(request: Request, reference: str):
         if result['status'] and result['data']['status'] == 'success':
             # Check if this transaction has associated investor data
             investor_created = False
+            session_token = None
             if reference in pending_investors:
                 investor_info = pending_investors[reference]
 
@@ -219,6 +220,31 @@ async def payment_callback(request: Request, reference: str):
 
                         investor_created = True
 
+                        # For initial deposits, create a session to log the user in
+                        try:
+                            # Get user by email to check if user exists
+                            user_response = investor_service.supabase.table('users').select('*').eq('email', investor_info["email"]).execute()
+                            user_data = getattr(user_response, 'data', [])
+
+                            if user_data and len(user_data) > 0:
+                                user = user_data[0]
+                                # Create session token
+                                from ..routes.auth import create_session_token
+                                import uuid
+                                from datetime import datetime, timedelta
+
+                                session_token = create_session_token()
+                                session_data = {
+                                    'user_id': user['id'],
+                                    'token': session_token,
+                                    'created_at': datetime.now().isoformat(),
+                                    'expires_at': (datetime.now() + timedelta(hours=6)).isoformat()
+                                }
+                                investor_service.supabase.table('sessions').insert(session_data).execute()
+                        except Exception as session_error:
+                            print(f"Warning: Failed to create session for user after successful payment: {str(session_error)}")
+                            session_token = None
+
                         # Clean up pending investor data
                         del pending_investors[reference]
 
@@ -226,8 +252,12 @@ async def payment_callback(request: Request, reference: str):
                     # Log error but still redirect (investor can be created manually)
                     print(f"Error creating investor record: {str(e)}")
 
-            # Redirect to success page
-            return RedirectResponse(url=f"{settings.FRONTEND_URL}/dashboard?payment=success")
+            # Redirect to success page with session token if created
+            redirect_url = f"{settings.FRONTEND_URL}/dashboard?payment=success"
+            if session_token:
+                redirect_url += f"&session_token={session_token}"
+
+            return RedirectResponse(url=redirect_url)
         else:
             # Clean up pending investor data on failure
             if reference in pending_investors:

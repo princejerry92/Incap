@@ -657,7 +657,8 @@ class DashboardService:
 
                         # Only update investment_expiry_date if it's NULL
                         if investor.get('investment_expiry_date') is None:
-                            update_data['investment_expiry_date'] = expiry_date.date()
+                            # Store as ISO string so the Supabase client can JSON serialize it
+                            update_data['investment_expiry_date'] = expiry_date.date().isoformat()
 
                         # Update if there's data to update
                         if update_data:

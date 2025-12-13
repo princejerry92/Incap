@@ -244,3 +244,188 @@ class AdminService:
                 return {'success': False, 'error': 'Failed to update query'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
+
+    def check_investment_data_integrity(self) -> Dict[str, Any]:
+        """
+        Check for investors with data inconsistencies.
+        Checks:
+        1. total_investment not set (but initial_investment > 0)
+        2. last_due_date is NULL (and week > 0)
+        3. next_due_date consistency with investment_start_date and current_week
+        4. investment_expiry_date missing
+        """
+        try:
+            response = self.supabase.table('investors').select('*').execute()
+            investors = getattr(response, 'data', [])
+
+            issues = []
+            now = datetime.now()
+
+            for investor in investors:
+                investor_id = investor['id']
+                email = investor.get('email')
+                initial = float(investor.get('initial_investment', 0) or 0)
+                total = float(investor.get('total_investment', 0) or 0)
+                portfolio_type = investor.get('portfolio_type')
+                investment_type = investor.get('investment_type')
+                start_date_str = investor.get('investment_start_date')
+                last_due_date = investor.get('last_due_date')
+                next_due_date = investor.get('next_due_date')
+                expiry_date = investor.get('investment_expiry_date')
+                current_week = int(investor.get('current_week', 0))
+
+                # Check 1: Total Investment Missing
+                if initial > 0 and total <= 0:
+                    issues.append({
+                        'investor_id': investor_id,
+                        'email': email,
+                        'issue': 'total_investment_not_set',
+                        'details': f"Initial: {initial}, Total: {total}"
+                    })
+                    continue
+
+                # Skip further checks if no active investment
+                if not investment_type or not start_date_str:
+                    continue
+
+                # Parse start date
+                # Handle potential timezone formats
+                if isinstance(start_date_str, str):
+                    start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+                    # Ensure offset-naive for simple calculation if needed, or keep aware.
+                    # Standardizing on offset-naive for 'now' diff usually easier if we stick to one convention.
+                    # But better to make 'now' aware or 'start_date' naive.
+                    # Let's make 'now' aware if start_date is aware.
+                    if start_date.tzinfo:
+                         now_aware = datetime.now(start_date.tzinfo)
+                         days_diff = (now_aware - start_date).days
+                    else:
+                         days_diff = (now - start_date).days
+                else:
+                    days_diff = 0 # Should not happen if str
+                
+                calculated_weeks_elapsed = days_diff // 7
+
+                # Check 2: Week Mismatch (allowing 1 week drift for payment processing time)
+                # If calculated week is significantly different from current_week
+                # Strict check: if calculated > current_week, it means they missed payments or cron didn't run.
+                # identifying this as an integrity issue to be safe.
+                if calculated_weeks_elapsed > current_week + 1:
+                     issues.append({
+                        'investor_id': investor_id,
+                        'email': email,
+                        'issue': 'timeline_mismatch',
+                        'details': f"Calculated Weeks: {calculated_weeks_elapsed}, DB Week: {current_week}"
+                    })
+
+                # Check 3: Missing Expiry Date
+                if not expiry_date:
+                    issues.append({
+                        'investor_id': investor_id,
+                        'email': email,
+                        'issue': 'missing_expiry_date',
+                        'details': "Investment expiry date is NULL"
+                    })
+
+                # Check 4: Missing Dates (Null Last Due Date when Week > 0)
+                if current_week > 0 and not last_due_date:
+                     issues.append({
+                        'investor_id': investor_id,
+                        'email': email,
+                        'issue': 'missing_last_due_date',
+                        'details': f"Week is {current_week} but last_due_date is NULL"
+                    })
+
+            return {'success': True, 'issues_found': len(issues), 'issues': issues}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def fix_investor_data_integrity(self, investor_id: str) -> Dict[str, Any]:
+        """
+        Fix data integrity for a specific investor.
+        Recalculates total_investment, expiry_date, and realigns weeks/due dates based on start_date.
+        """
+        try:
+            # 1. Fetch Investor
+            response = self.supabase.table('investors').select('*').eq('id', investor_id).execute()
+            data = getattr(response, 'data', [])
+            if not data:
+                return {'success': False, 'error': 'Investor not found'}
+            
+            investor = data[0]
+            
+            # 2. Key Data
+            initial = float(investor.get('initial_investment', 0) or 0)
+            total = float(investor.get('total_investment', 0) or 0)
+            portfolio_type = investor.get('portfolio_type')
+            investment_type = investor.get('investment_type')
+            start_date_str = investor.get('investment_start_date')
+            
+            updates = {}
+            
+            # 3. Fix Total Investment
+            if initial > 0 and total <= 0:
+                updates['total_investment'] = initial
+                
+            # 4. Realign Timeline (Dates & Weeks) if investment is active
+            if investment_type and start_date_str:
+                from .portfolio_service import PortfolioService
+                portfolio_service = PortfolioService()
+                
+                # Parse Start Date
+                start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+                
+                # Calculate Expiry
+                expiry_date = portfolio_service.get_investment_expiry_date(portfolio_type, investment_type, start_date)
+                if expiry_date:
+                    updates['investment_expiry_date'] = expiry_date.isoformat()
+                
+                # Recalculate Current Week
+                now = datetime.now(start_date.tzinfo)
+                days_elapsed = (now - start_date).days
+                weeks_elapsed = days_elapsed // 7
+                
+                # Update week
+                updates['current_week'] = weeks_elapsed
+                
+                # Reconstruct Due Dates
+                # Validation: Don't set future dates if they exceeded expiry
+                # Rule: 
+                # last_due_date = start_date + (weeks_elapsed * 7 days) [The most recent due date]
+                # next_due_date = last_due_date + 7 days
+                
+                from datetime import timedelta
+                
+                recalc_last_due = start_date + timedelta(weeks=weeks_elapsed)
+                recalc_next_due = recalc_last_due + timedelta(days=7)
+                
+                # If next due date is past expiry, it should be None (or handled by status completion)
+                if expiry_date and recalc_next_due > expiry_date:
+                     updates['next_due_date'] = None
+                else:
+                     updates['next_due_date'] = recalc_next_due.isoformat()
+                
+                updates['last_due_date'] = recalc_last_due.isoformat()
+
+            if updates:
+                updates['updated_at'] = datetime.now().isoformat()
+                self.supabase.table('investors').update(updates).eq('id', investor_id).execute()
+                return {'success': True, 'updates': updates}
+            else:
+                return {'success': True, 'message': 'No updates needed'}
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def trigger_interest_payment_job(self) -> Dict[str, Any]:
+        """
+        Manually trigger the interest payment cron job.
+        Wraps the service call.
+        """
+        try:
+             # Import here to avoid circular dependencies if any
+             from .interest_calculation_service import InterestCalculationService
+             service = InterestCalculationService()
+             return service.check_and_process_all_due_dates()
+        except Exception as e:
+             return {'success': False, 'error': str(e)}

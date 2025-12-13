@@ -4,7 +4,7 @@ import uvicorn
 from app.main import app  # Import the FastAPI app
 
 def start_server():
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")  # Use port 8000 to match main.py
 
 if __name__ == "__main__":
     # Start FastAPI server in a background thread
@@ -15,10 +15,10 @@ if __name__ == "__main__":
     import time
     time.sleep(1)
 
-    # Open PyWebView window
+    # Open PyWebView window pointing to the root URL which serves index.html
     webview.create_window(
         'Blue Gold Investment Bank',
-        'http://127.0.0.1:8000/',
+        'http://127.0.0.1:8000/',  # Point to root URL where index.html is served
         width=1400,
         height=900,
         resizable=True,

@@ -425,3 +425,60 @@ async def get_admin_config(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Cron & Integrity Routes ---
+
+@router.post("/cron/run-interest-payments")
+async def trigger_interest_payments(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Manually trigger interest payment job.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    
+    try:
+        from ..services.admin_service import AdminService
+        service = AdminService()
+        result = service.trigger_interest_payment_job()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/integrity/check")
+async def check_integrity(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Check for data integrity issues.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.admin_service import AdminService
+        service = AdminService()
+        result = service.check_investment_data_integrity()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/integrity/fix/{investor_id}")
+async def fix_integrity(
+    investor_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Fix data integrity for a specific investor.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.admin_service import AdminService
+        service = AdminService()
+        result = service.fix_investor_data_integrity(investor_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

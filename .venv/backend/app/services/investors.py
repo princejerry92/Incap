@@ -102,6 +102,7 @@ class InvestorService:
             # bank_account_number is the user's real bank account; frontend should provide it
             'bank_account_number': payload.get('accountNumber') or payload.get('bank_account_number'),
             'initial_investment': float(payload.get('amount') or payload.get('initial_investment') or 0),
+            'total_investment': float(payload.get('amount') or payload.get('initial_investment') or 0),
             'portfolio_type': portfolio_type,
             'investment_type': payload.get('investmentType') or payload.get('investment_type'),  # Added investment type
             'paystack_reference': payload.get('paystack_reference', ''),  # New field for Paystack reference
@@ -133,6 +134,10 @@ class InvestorService:
             amt = float(payload.get('amount') or payload.get('initial_investment') or 0)
             if amt <= 0:
                 return "Initial investment must be greater than 0"
+            
+            # Ensure we can set both fields properly
+            if not payload.get('amount') and not payload.get('initial_investment'):
+                return "Initial investment amount is required but missing from payload"
         except Exception:
             return "Invalid initial investment amount"
 
