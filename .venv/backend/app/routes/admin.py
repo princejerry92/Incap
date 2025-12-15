@@ -482,3 +482,40 @@ async def fix_integrity(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/missed-payments-summary")
+async def get_missed_payments_summary(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get summary of investors with missed payments.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.admin_service import AdminService
+        service = AdminService()
+        result = service.get_missed_payments_summary()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/catch-up-missed-payments/{investor_id}")
+async def catch_up_missed_payments(
+    investor_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Manually trigger catch-up for missed payments for an investor.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.admin_service import AdminService
+        service = AdminService()
+        result = service.process_missed_payment_catchup(investor_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

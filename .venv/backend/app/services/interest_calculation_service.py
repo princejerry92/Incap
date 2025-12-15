@@ -134,7 +134,8 @@ class InterestCalculationService:
                 'interest_amount': weekly_interest,
                 'weeks_elapsed': weeks_elapsed,
                 'investment_start_date': investment_start_date,
-                'total_investment': total_investment
+                'total_investment': total_investment,
+                'payment_counter': int(investor.get('payment_counter', 0) or 0)
             }
 
         except Exception as e:
@@ -142,6 +143,36 @@ class InterestCalculationService:
                 'success': False,
                 'error': f'Error calculating current interest: {str(e)}'
             }
+
+    def calculate_missed_payments(self, investor_id: str) -> Dict[str, Any]:
+        """
+        Calculate number of missed payments based on weeks elapsed vs payment counter.
+        """
+        try:
+            interest_result = self.calculate_current_interest(investor_id)
+            if not interest_result['success']:
+                return interest_result
+            
+            weeks_elapsed = interest_result['weeks_elapsed']
+            payment_counter = interest_result.get('payment_counter', 0)
+            
+            # weeks_elapsed is total full weeks passed.
+            # payment_counter is total payments made.
+            # Missed = weeks_elapsed - payment_counter
+            # If Result < 0, it means overpayment (should alert)
+            
+            missed_count = weeks_elapsed - payment_counter
+            
+            return {
+                'success': True,
+                'weeks_elapsed': weeks_elapsed,
+                'payment_counter': payment_counter,
+                'missed_payments': missed_count,
+                'data': interest_result
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f"Error calculating missed payments: {str(e)}"}
 
     def update_spending_account(self, investor_id: str, interest_amount: float) -> Dict[str, Any]:
         """Add interest to investor's spending account."""
@@ -292,7 +323,20 @@ class InterestCalculationService:
                 return interest_result
             
             interest_amount = interest_result['interest_amount']
+            weeks_elapsed = interest_result['weeks_elapsed']
+            payment_counter = interest_result.get('payment_counter', 0)
             
+            # CHECK: Only pay if we are due for the NEXT payment
+            # i.e., weeks_elapsed should be greater than payment_counter
+            # If weeks_elapsed == payment_counter, we are up to date.
+            if weeks_elapsed <= payment_counter:
+                 return {
+                    'success': True,
+                    'message': 'Payment not yet due based on counter',
+                    'paid': False,
+                    'debug': f"Weeks: {weeks_elapsed}, Counter: {payment_counter}"
+                }
+
             if interest_amount <= 0:
                 return {
                     'success': True,
@@ -313,9 +357,14 @@ class InterestCalculationService:
                 current_total_paid = float(investor.get('total_paid', 0) or 0)
                 new_total_paid = current_total_paid + interest_amount
                 
-                # Update investor record
+                new_total_paid = current_total_paid + interest_amount
+                
+                # Update investor record with new total_paid AND increment payment_counter
+                new_counter = payment_counter + 1
+                
                 investor_update_data = {
                     'total_paid': new_total_paid,
+                    'payment_counter': new_counter,
                     'updated_at': datetime.now().isoformat()
                 }
                 
@@ -702,3 +751,56 @@ class InterestCalculationService:
                 'success': False,
                 'error': f"Error in batch processing: {str(e)}"
             }
+            return {
+                'success': False,
+                'error': f"Error in batch processing: {str(e)}"
+            }
+
+    def admin_catch_up_missed_payments(self, investor_id: str) -> Dict[str, Any]:
+        """
+        Manually process all missed payments for an investor.
+        This loops and pays until payment_counter catches up to weeks_elapsed.
+        """
+        try:
+            # 1. Calculate missed
+            missed_result = self.calculate_missed_payments(investor_id)
+            if not missed_result['success']:
+                return missed_result
+            
+            missed_count = missed_result['missed_payments']
+            
+            if missed_count <= 0:
+                return {'success': True, 'message': 'No missed payments to catch up', 'processed_count': 0}
+            
+            processed_count = 0
+            errors = []
+            
+            # 2. Loop and pay
+            # We process one by one to ensure transaction logging and safety
+            for _ in range(missed_count):
+                # We call process_auto_withdrawal which now checks the counter
+                # It will pay one installment and increment counter
+                result = self.process_auto_withdrawal(investor_id)
+                
+                if result['success'] and result.get('transaction_recorded'):
+                    processed_count += 1
+                elif result['success'] and not result.get('paid'):
+                    # This happens if process_auto_withdrawal decides it shouldn't pay (limit reached?)
+                    # Should update missed logic if this happens
+                    break 
+                else:
+                    errors.append(result.get('error', 'Unknown error'))
+                    break # Stop on error
+            
+            # 3. Update due dates to reflect current reality
+            self.ensure_due_dates_up_to_date(investor_id)
+            
+            return {
+                'success': True,
+                'message': f"Processed {processed_count} missed payments",
+                'processed_count': processed_count,
+                'errors': errors
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': f"Error in administrative catch-up: {str(e)}"}

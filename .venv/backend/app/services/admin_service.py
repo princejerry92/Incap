@@ -423,9 +423,55 @@ class AdminService:
         Wraps the service call.
         """
         try:
-             # Import here to avoid circular dependencies if any
-             from .interest_calculation_service import InterestCalculationService
              service = InterestCalculationService()
              return service.check_and_process_all_due_dates()
+        except Exception as e:
+             return {'success': False, 'error': str(e)}
+
+    def get_missed_payments_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of all investors who have missed payments.
+        """
+        try:
+            # 1. Fetch all active investors (optimize by filtering if possible, but calculating missed requires logic)
+            response = self.supabase.table('investors').select('*').neq('status', 'completed').execute()
+            investors = getattr(response, 'data', [])
+            
+            summary = []
+            service = InterestCalculationService()
+            
+            for investor in investors:
+                # We can calculate missed payments using the service
+                # Note: This might be N+1 queries if we are not careful, but acceptable for admin dashboard volume
+                result = service.calculate_missed_payments(investor['id'])
+                
+                if result['success'] and result.get('missed_payments', 0) > 0:
+                    summary.append({
+                        'investor_id': investor['id'],
+                        'first_name': investor.get('first_name'),
+                        'surname': investor.get('surname'),
+                        'email': investor.get('email'),
+                        'missed_payments': result['missed_payments'],
+                        'weeks_elapsed': result.get('weeks_elapsed'),
+                        'payment_counter': result.get('payment_counter'),
+                        'total_investment': investor.get('total_investment')
+                    })
+            
+            return {
+                'success': True,
+                'data': summary,
+                'count': len(summary)
+            }
+            
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def process_missed_payment_catchup(self, investor_id: str) -> Dict[str, Any]:
+        """
+        Trigger catch-up for a single investor.
+        """
+        try:
+            service = InterestCalculationService()
+            return service.admin_catch_up_missed_payments(investor_id)
         except Exception as e:
              return {'success': False, 'error': str(e)}

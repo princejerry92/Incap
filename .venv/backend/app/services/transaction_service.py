@@ -992,9 +992,17 @@ class TransactionService:
             # Update investor record to reset investment details but keep initial deposit
             update_data = {
                 'initial_investment': remaining_amount,  # Reduce initial investment by service fee
+                'total_investment': remaining_amount,    # Also update total_investment
                 'investment_type': None,  # Reset investment type
                 'investment_started': False,  # Reset investment started flag
                 'investment_ended': False,  # Reset investment ended flag
+                'payment_counter': 0,  # CRITICAL: Reset counter for new cycle
+                'current_week': 0,    # Reset week tracking
+                'total_paid': 0,      # Reset total paid for new cycle
+                'investment_start_date': None,  # Will be set on new investment selection
+                'last_due_date': None,
+                'next_due_date': None,
+                'investment_expiry_date': None,
                 'created_at': datetime.now().isoformat(),  # Reset creation date
                 'updated_at': datetime.now().isoformat()
             }
