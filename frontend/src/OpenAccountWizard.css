@@ -1,0 +1,149 @@
+/* OpenAccountWizard.css */
+
+.wizard-container {
+  max-width: 600px;
+  margin: auto;
+  padding: 20px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.stepper {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+  text-align: center;
+}
+
+.step .icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  margin-bottom: 5px;
+  transition: all 0.3s ease;
+}
+
+.step.active .icon {
+  background: #007bff;
+  color: white;
+  transform: scale(1.1);
+}
+
+.step.completed .icon {
+  background: #28a745;
+  color: white;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #f0f0f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(to right, #007bff, #00c6ff);
+  transition: width 0.3s ease;
+}
+
+.step-content {
+  margin-bottom: 20px;
+}
+
+.carousel-container {
+  display: flex;
+  overflow-x: auto;
+  padding: 10px 0;
+  gap: 10px;
+}
+
+.carousel-item {
+  padding: 10px 20px;
+  background: #f0f0f0;
+  border-radius: 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.carousel-item.active {
+  background: #007bff;
+  color: white;
+  transform: scale(1.05);
+}
+
+.investment-type {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 5px 0;
+}
+
+.tooltip-icon {
+  color: #007bff;
+  cursor: pointer;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  margin: 5px 0;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+small {
+  display: block;
+  color: red;
+  margin-bottom: 10px;
+}
+
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+}
+
+.wizard-nav button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s ease;
+}
+
+.wizard-nav button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.wizard-nav button:not(:disabled) {
+  background: #007bff;
+  color: white;
+}
+
+.wizard-nav button:not(:disabled):hover {
+  background: #0056b3;
+}
+.wizard-nav button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0,123,255,0.5);
+}

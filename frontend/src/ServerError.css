@@ -1,0 +1,50 @@
+.error-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-image: url('./assets/Fluffy A Character.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  color: white;
+  text-align: center;
+}
+
+.error-content {
+  background: rgba(0, 0, 0, 0.7);
+  padding: 40px;
+  border-radius: 10px;
+  max-width: 500px;
+}
+
+.error-content h1 {
+  font-size: 6rem;
+  margin: 0;
+  font-weight: bold;
+}
+
+.error-content h2 {
+  font-size: 2rem;
+  margin: 10px 0;
+}
+
+.error-content p {
+  font-size: 1.2rem;
+  margin-bottom: 30px;
+}
+
+.error-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 1.1rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.error-button:hover {
+  background-color: #1e7e34;
+}
