@@ -491,6 +491,29 @@ class DashboardService:
             print(f"Error getting notifications: {e}")
             notifications = []
 
+        # Get server events for dashboard carousel
+        server_events = {}
+        try:
+            from .server_events_service import ServerEventsService
+            events_service = ServerEventsService()
+            server_events_result = events_service.get_active_events(limit=10)
+
+            if server_events_result['success']:
+                server_events = {
+                    'events': server_events_result['events'],
+                    'count': server_events_result['count']
+                }
+
+                # Check if there are pending updates and include flag
+                events_update_flag = events_service.get_events_update_flag()
+            else:
+                server_events = {'events': [], 'count': 0}
+                events_update_flag = False
+        except Exception as e:
+            print(f"Error fetching server events for dashboard: {e}")
+            server_events = {'events': [], 'count': 0}
+            events_update_flag = False
+
         return {
             'success': True,
             'has_investor_account': bool(investor_data),
@@ -522,6 +545,8 @@ class DashboardService:
             'analytics': analytics_summary,
             'notifications': notifications,
             'points': user_points,
+            'server_events': server_events,
+            'server_events_update_flag': events_update_flag,
             'summary': {
                 'total_investments': len(investment_data['investments']),
                 'active_portfolios': len([inv for inv in investment_data['investments']]),

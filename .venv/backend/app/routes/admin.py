@@ -519,3 +519,132 @@ async def catch_up_missed_payments(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Server Events/Cards Management ---
+
+@router.get("/server-events")
+async def get_server_events(
+    include_inactive: Optional[bool] = True,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get all server events for admin management.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.server_events_service import ServerEventsService
+        service = ServerEventsService()
+        result = service.get_events_for_admin(include_inactive=include_inactive)
+
+        if not result['success']:
+            raise HTTPException(status_code=500, detail=result['error'])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching server events: {str(e)}")
+
+
+@router.post("/server-events")
+async def create_server_event(
+    event_data: Dict[str, Any],
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Create a new server event/card.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.server_events_service import ServerEventsService
+        service = ServerEventsService()
+        result = service.create_event(event_data)
+
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['error'])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating server event: {str(e)}")
+
+
+@router.put("/server-events/{event_id}")
+async def update_server_event(
+    event_id: str,
+    update_data: Dict[str, Any],
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Update an existing server event/card.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.server_events_service import ServerEventsService
+        service = ServerEventsService()
+        result = service.update_event(event_id, update_data)
+
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['error'])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating server event: {str(e)}")
+
+
+@router.delete("/server-events/{event_id}")
+async def delete_server_event(
+    event_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Delete a server event (soft delete).
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.server_events_service import ServerEventsService
+        service = ServerEventsService()
+        result = service.delete_event(event_id)
+
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['error'])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting server event: {str(e)}")
+
+
+@router.post("/clear-server-events-flag")
+async def clear_server_events_flag(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Clear the server events update flag after client has refreshed.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    try:
+        from ..services.server_events_service import ServerEventsService
+        service = ServerEventsService()
+        service.clear_events_update_flag()
+
+        return {
+            'success': True,
+            'message': 'Server events update flag cleared'
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error clearing server events flag: {str(e)}")

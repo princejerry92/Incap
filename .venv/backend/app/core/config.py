@@ -2,9 +2,32 @@ import os
 import sys
 from dotenv import load_dotenv
 
+# When the app is bundled by PyInstaller, data files are extracted to
+# sys._MEIPASS at runtime. However, the .env file might be placed in
+# different locations on the target machine (bundle root, same folder as
+# the executable, or the working directory). Try a few common locations
+# so the app can still find API keys after installation.
 if getattr(sys, 'frozen', False):
     # Running in PyInstaller bundle
-    load_dotenv(os.path.join(sys._MEIPASS, '.env'))
+    _candidate_paths = [
+        os.path.join(getattr(sys, '_MEIPASS', ''), '.env'),
+        os.path.join(os.path.dirname(sys.executable), '.env'),
+        os.path.join(os.getcwd(), '.env'),
+    ]
+
+    for _p in _candidate_paths:
+        if _p and os.path.exists(_p):
+            load_dotenv(_p)
+            print(f"Loaded .env from: {_p}")
+            break
+    else:
+        # No .env found in bundle locations. In production, it's preferable
+        # to include the .env file in the PyInstaller build using:
+        #   pyinstaller --onefile --add-data ".env;."
+        # or add it to the spec's `datas=[('path/to/.env', '.')]` so it is
+        # extracted into sys._MEIPASS at runtime. If you prefer not to
+        # bundle .env, set environment variables on the target system.
+        print("Warning: .env not found in bundle or executable directory; relying on system environment variables if present.")
 else:
     # Running in development
     load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
